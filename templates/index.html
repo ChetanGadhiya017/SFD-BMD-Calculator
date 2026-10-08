@@ -1,94 +1,100 @@
-<!-- templates/index.html -->
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Beam Analysis Tool</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SFD &amp; BMD Calculator</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <div class="container">
-        <h1>Beam Analysis Tool</h1>
-        <form action="/calculate" method="post">
-            <label for="length">Length of the beam:</label>
-            <input type="number" id="length" name="length" step="0.01" required><br>
-            
-            <h2>Point Loads</h2>
-            <div id="point_loads">
-                <div class="point_load">
-                    <label for="point_load_magnitude_1">Magnitude:</label>
-                    <input type="number" id="point_load_magnitude_1" name="point_load_magnitude_1" step="0.01" required>
-                    <label for="point_load_position_1">Position:</label>
-                    <input type="number" id="point_load_position_1" name="point_load_position_1" step="0.01" required>
-                </div>
-                <!-- Additional point load fields will be added dynamically using JavaScript -->
-            </div>
-            <button type="button" id="add_point_load">Add Point Load</button><br>
-            
-            <h2>Distributed Loads</h2>
-            <div id="distributed_loads">
-                <div class="distributed_load">
-                    <label for="distributed_load_magnitude_1">Magnitude:</label>
-                    <input type="number" id="distributed_load_magnitude_1" name="distributed_load_magnitude_1" step="0.01" required>
-                    <label for="distributed_load_length_1">Length:</label>
-                    <input type="number" id="distributed_load_length_1" name="distributed_load_length_1" step="0.01" required>
-                    <label for="distributed_load_position_1">Position:</label>
-                    <input type="number" id="distributed_load_position_1" name="distributed_load_position_1" step="0.01" required>
-                </div>
-                <!-- Additional distributed load fields will be added dynamically using JavaScript -->
-            </div>
-            <button type="button" id="add_distributed_load">Add Distributed Load</button><br>
-            
-            <label for="load_unit">Unit for Load:</label>
-            <select id="load_unit" name="load_unit">
-                <option value="N">Newtons (N)</option>
-                <option value="kN">KiloNewtons (kN)</option>
-                <!-- Add more units if needed -->
-            </select><br>
-            
-            <label for="length_unit">Unit for Length:</label>
-            <select id="length_unit" name="length_unit">
-                <option value="m">Meters (m)</option>
-                <option value="cm">Centimeters (cm)</option>
-                <option value="mm">Millimeters (mm)</option>
-                <!-- Add more units if needed -->
-            </select><br>
-            
-            <input type="submit" value="Calculate">
-        </form>
+<header class="top">
+  <div class="wrap">
+    <h1>📐 SFD &amp; BMD Calculator</h1>
+    <p>Reactions, shear force &amp; bending moment diagrams for simply supported, overhanging and cantilever beams.</p>
+  </div>
+</header>
+
+<main class="wrap grid">
+  <form method="post" class="card" id="beam-form">
+    <div class="examples">
+      <span>Try:</span>
+      {% for key, ex in examples.items() %}<a href="/?example={{ key }}">{{ ex.label }}</a>{% endfor %}
     </div>
 
-    <script>
-        document.getElementById('add_point_load').addEventListener('click', function() {
-            var pointLoadsContainer = document.getElementById('point_loads');
-            var pointLoadIndex = pointLoadsContainer.children.length + 1;
-            var pointLoadDiv = document.createElement('div');
-            pointLoadDiv.classList.add('point_load');
-            pointLoadDiv.innerHTML = `
-                <label for="point_load_magnitude_${pointLoadIndex}">Magnitude:</label>
-                <input type="number" id="point_load_magnitude_${pointLoadIndex}" name="point_load_magnitude_${pointLoadIndex}" step="0.01" required>
-                <label for="point_load_position_${pointLoadIndex}">Position:</label>
-                <input type="number" id="point_load_position_${pointLoadIndex}" name="point_load_position_${pointLoadIndex}" step="0.01" required>
-            `;
-            pointLoadsContainer.appendChild(pointLoadDiv);
-        });
+    <h2>Beam</h2>
+    <div class="row">
+      <label>Type
+        <select name="kind" id="kind">
+          <option value="simply_supported" {% if form.kind != 'cantilever' %}selected{% endif %}>Simply supported / overhanging</option>
+          <option value="cantilever" {% if form.kind == 'cantilever' %}selected{% endif %}>Cantilever (fixed at left)</option>
+        </select>
+      </label>
+      <label>Length L <input type="number" name="length" step="any" min="0" required value="{{ form.length }}"></label>
+    </div>
+    <div class="row supports">
+      <label>Support A (pin) at x <input type="number" name="support_a" step="any" value="{{ form.support_a if form.support_a is not none else 0 }}"></label>
+      <label>Support B (roller) at x <input type="number" name="support_b" step="any" value="{{ form.support_b if form.support_b is not none else form.length }}"></label>
+    </div>
+    <div class="row">
+      <label>Force unit <select name="force_unit">{% for u in force_units %}<option {% if u == fu %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></label>
+      <label>Length unit <select name="length_unit">{% for u in length_units %}<option {% if u == lu %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></label>
+    </div>
 
-        document.getElementById('add_distributed_load').addEventListener('click', function() {
-            var distributedLoadsContainer = document.getElementById('distributed_loads');
-            var distributedLoadIndex = distributedLoadsContainer.children.length + 1;
-            var distributedLoadDiv = document.createElement('div');
-            distributedLoadDiv.classList.add('distributed_load');
-            distributedLoadDiv.innerHTML = `
-                <label for="distributed_load_magnitude_${distributedLoadIndex}">Magnitude:</label>
-                <input type="number" id="distributed_load_magnitude_${distributedLoadIndex}" name="distributed_load_magnitude_${distributedLoadIndex}" step="0.01" required>
-                <label for="distributed_load_length_${distributedLoadIndex}">Length:</label>
-                <input type="number" id="distributed_load_length_${distributedLoadIndex}" name="distributed_load_length_${distributedLoadIndex}" step="0.01" required>
-                <label for="distributed_load_position_${distributedLoadIndex}">Position:</label>
-                <input type="number" id="distributed_load_position_${distributedLoadIndex}" name="distributed_load_position_${distributedLoadIndex}" step="0.01" required>
-            `;
-            distributedLoadsContainer.appendChild(distributedLoadDiv);
-        });
-    </script>
+    <h2>Point loads <small>↓ positive</small></h2>
+    <div class="rows" data-group="pl" data-fields="p:Load,x:at x">
+      {% for p, x in form.point_loads %}
+      <div class="load"><input name="pl_p" type="number" step="any" placeholder="Load" value="{{ p }}"><input name="pl_x" type="number" step="any" placeholder="at x" value="{{ x }}"><button type="button" class="del" aria-label="Remove">✕</button></div>
+      {% endfor %}
+    </div>
+    <button type="button" class="add" data-target="pl">+ Point load</button>
+
+    <h2>Distributed loads (UDL) <small>↓ positive, per unit length</small></h2>
+    <div class="rows" data-group="udl" data-fields="w:Intensity,a:from x,b:to x">
+      {% for w, a, b in form.udls %}
+      <div class="load"><input name="udl_w" type="number" step="any" placeholder="Intensity" value="{{ w }}"><input name="udl_a" type="number" step="any" placeholder="from x" value="{{ a }}"><input name="udl_b" type="number" step="any" placeholder="to x" value="{{ b }}"><button type="button" class="del" aria-label="Remove">✕</button></div>
+      {% endfor %}
+    </div>
+    <button type="button" class="add" data-target="udl">+ UDL</button>
+
+    <h2>Applied moments <small>↻ clockwise positive</small></h2>
+    <div class="rows" data-group="m" data-fields="m:Moment,x:at x">
+      {% for m, x in form.moments %}
+      <div class="load"><input name="m_m" type="number" step="any" placeholder="Moment" value="{{ m }}"><input name="m_x" type="number" step="any" placeholder="at x" value="{{ x }}"><button type="button" class="del" aria-label="Remove">✕</button></div>
+      {% endfor %}
+    </div>
+    <button type="button" class="add" data-target="m">+ Moment</button>
+
+    <button type="submit" class="primary">Calculate</button>
+  </form>
+
+  <section class="card results">
+    {% if error %}
+      <div class="error">⚠️ {{ error }}</div>
+    {% elif result %}
+      <h2>Results</h2>
+      <div class="stats">
+        {% for name, val in result.reactions.items() %}
+        <div class="stat"><span>{{ name.replace('_', ' ') }}</span><b>{{ '%.3f'|format(val) }}</b><em>{{ fu }} {{ '↑' if val >= 0 else '↓' }}</em></div>
+        {% endfor %}
+        {% if result.fixed_end_moment is not none %}
+        <div class="stat"><span>Fixed-end moment</span><b>{{ '%.3f'|format(result.fixed_end_moment) }}</b><em>{{ fu }}·{{ lu }}</em></div>
+        {% endif %}
+        <div class="stat"><span>Max |V|</span><b>{{ '%.3f'|format(result.max_shear.value|abs) }}</b><em>{{ fu }} @ x={{ '%.3g'|format(result.max_shear.x) }}</em></div>
+        <div class="stat"><span>Max sagging M</span><b>{{ '%.3f'|format(result.max_sagging_moment.value) }}</b><em>{{ fu }}·{{ lu }} @ x={{ '%.3g'|format(result.max_sagging_moment.x) }}</em></div>
+        <div class="stat"><span>Max hogging M</span><b>{{ '%.3f'|format(result.max_hogging_moment.value) }}</b><em>{{ fu }}·{{ lu }} @ x={{ '%.3g'|format(result.max_hogging_moment.x) }}</em></div>
+        <div class="stat"><span>Contraflexure</span><b>{% if result.contraflexure_points %}{{ result.contraflexure_points|map('round', 3)|join(', ') }}{% else %}—{% endif %}</b><em>x ({{ lu }})</em></div>
+      </div>
+      <img class="plot" src="data:image/png;base64,{{ plot }}" alt="Beam, shear force and bending moment diagrams">
+    {% else %}
+      <div class="empty">
+        <p>Enter the beam and loads, then press <b>Calculate</b>.</p>
+        <p class="muted">Sign convention: loads ↓ positive, moments clockwise positive, sagging bending moment positive.</p>
+      </div>
+    {% endif %}
+  </section>
+</main>
+
+<footer class="wrap muted">Built by <a href="https://github.com/ChetanGadhiya017">Chetan Gadhiya</a> · <a href="https://github.com/ChetanGadhiya017/SFD-BMD-Calculator">Source on GitHub</a></footer>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

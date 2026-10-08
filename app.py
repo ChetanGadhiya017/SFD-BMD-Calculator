@@ -1,127 +1,120 @@
-# app.py
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-import base64
-from io import BytesIO
+"""Flask web interface for the SFD & BMD calculator.
 
-from flask import Flask, render_template, request
+Run:  python app.py   →  http://127.0.0.1:5000
+"""
+
+from __future__ import annotations
+
+import os
+
+from flask import Flask, jsonify, render_template, request
+
+from beam_solver import UDL, Beam, BeamError, MomentLoad, PointLoad, solve
+from beam_solver.plotting import render_base64
 
 app = Flask(__name__)
 
-# Function to calculate reactions for multiple point loads
-def calculate_reactions_point_loads(point_loads, L):
-    total_load = 0
-    total_moment = 0
-    for load in point_loads:
-        total_load += load['magnitude']
-        total_moment += load['magnitude'] * load['position']
-    R1 = total_load * (L - total_moment) / L
-    R2 = total_load - R1
-    return R1, R2
+FORCE_UNITS = ["kN", "N", "kgf", "lbf", "kip"]
+LENGTH_UNITS = ["m", "mm", "cm", "ft", "in"]
 
-# Function to calculate reactions for distributed loads
-def calculate_reactions_distributed_loads(distributed_loads, L):
-    total_load = 0
-    total_moment = 0
-    for load in distributed_loads:
-        total_load += load['magnitude'] * load['length']
-        total_moment += load['magnitude'] * load['length'] * load['position'] + 0.5 * load['magnitude'] * load['length'] ** 2
-    R1 = total_load * (L - total_moment) / L
-    R2 = total_load - R1
-    return R1, R2
+EXAMPLES = {
+    "simple": {
+        "label": "Simply supported · point load + UDL",
+        "kind": "simply_supported", "length": 8, "support_a": 0, "support_b": 8,
+        "point_loads": [[20, 3]], "udls": [[5, 4, 8]], "moments": [],
+    },
+    "overhang": {
+        "label": "Overhanging beam · contraflexure",
+        "kind": "simply_supported", "length": 6, "support_a": 0, "support_b": 4.5,
+        "point_loads": [[10, 2], [3, 6]], "udls": [[2, 0, 6]], "moments": [[5, 3.5]],
+    },
+    "cantilever": {
+        "label": "Cantilever · tip load + UDL",
+        "kind": "cantilever", "length": 3, "support_a": None, "support_b": None,
+        "point_loads": [[4, 3]], "udls": [[2, 0, 3]], "moments": [],
+    },
+}
 
-# Function to create plots
-def create_plots(R1, R2, max_SF, maxBM, u1, u2, L, point_loads, distributed_loads):
-    l = np.linspace(0, L, 1000)
-    X = []
-    SF = []
-    M = []
 
-    for x in l:
-        # Calculate shear force
-        sf = 0
-        for load in point_loads:
-            sf -= load['magnitude'] * (x >= load['position'])
-        for load in distributed_loads:
-            sf -= load['magnitude'] * (x >= load['position']) * (x <= load['position'] + load['length'])
-        SF.append(sf)
+def _num(value, name):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise BeamError(f"'{name}' must be a number") from None
 
-        # Calculate bending moment
-        m = 0
-        for load in point_loads:
-            m -= load['magnitude'] * (x - load['position']) * (x >= load['position'])
-        for load in distributed_loads:
-            m -= load['magnitude'] * (x - load['position']) * (x >= load['position']) * (x <= load['position'] + load['length'])
-        M.append(m)
 
-        X.append(x)
+def beam_from_mapping(data: dict) -> Beam:
+    """Build a Beam from JSON or flattened form data (lists of lists)."""
+    kind = data.get("kind", "simply_supported")
+    length = _num(data.get("length"), "Beam length")
+    sa = data.get("support_a")
+    sb = data.get("support_b")
+    return Beam(
+        length=length,
+        kind=kind,
+        support_a=_num(sa, "Support A") if sa not in (None, "") and kind != "cantilever" else None,
+        support_b=_num(sb, "Support B") if sb not in (None, "") and kind != "cantilever" else None,
+        point_loads=[PointLoad(_num(p, "Load"), _num(x, "Load position")) for p, x in data.get("point_loads", [])],
+        udls=[UDL(_num(w, "UDL intensity"), _num(a, "UDL start"), _num(b, "UDL end"))
+              for w, a, b in data.get("udls", [])],
+        moments=[MomentLoad(_num(m, "Moment"), _num(x, "Moment position")) for m, x in data.get("moments", [])],
+    )
 
-    max_SF = min(SF)
-    maxBM = max(M)
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
+def _form_rows(prefix: str, fields: list[str]) -> list[list[str]]:
+    cols = [request.form.getlist(f"{prefix}_{f}") for f in fields]
+    rows = []
+    for values in zip(*cols):
+        if all(v.strip() == "" for v in values):
+            continue  # ignore completely empty rows
+        rows.append(list(values))
+    return rows
 
-    ax1.plot(X, SF)
-    ax1.plot([0, L], [0, 0])
-    ax1.set_title("Shear Force Diagram")
-    ax1.set_xlabel("Length in {}".format(u2))
-    ax1.set_ylabel("Shear Force ({})".format(u1))
-    ax1.grid(True)
 
-    ax2.plot(X, M)
-    ax2.plot([0, L], [0, 0])
-    ax2.set_title("Bending Moment Diagram")
-    ax2.set_xlabel("Length in {}".format(u2))
-    ax2.set_ylabel("Bending Moment ({})".format(u1))
-    ax2.grid(True)
+def _form_to_mapping() -> dict:
+    return {
+        "kind": request.form.get("kind", "simply_supported"),
+        "length": request.form.get("length"),
+        "support_a": request.form.get("support_a"),
+        "support_b": request.form.get("support_b"),
+        "point_loads": _form_rows("pl", ["p", "x"]),
+        "udls": _form_rows("udl", ["w", "a", "b"]),
+        "moments": _form_rows("m", ["m", "x"]),
+    }
 
-    plt.tight_layout()
 
-    # Convert plot to base64-encoded string
-    buffer = BytesIO()
-    plt.savefig(buffer, format='png')
-    buffer.seek(0)
-    plot_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
-
-    plt.close()
-
-    return plot_data
-
-@app.route('/')
+@app.route("/", methods=["GET", "POST"])
 def index():
-    return render_template('index.html')
+    fu = request.values.get("force_unit", "kN")
+    lu = request.values.get("length_unit", "m")
+    ctx = {"force_units": FORCE_UNITS, "length_units": LENGTH_UNITS, "examples": EXAMPLES, "fu": fu, "lu": lu}
 
-@app.route('/calculate', methods=['POST'])
-def calculate():
-    point_loads = []
-    distributed_loads = []
-    for key, value in request.form.items():
-        if key.startswith('point_load_magnitude'):
-            index = key.split('_')[-1]
-            point_loads.append({
-                'magnitude': float(value),
-                'position': float(request.form[f'point_load_position_{index}'])
-            })
-        elif key.startswith('distributed_load_magnitude'):
-            index = key.split('_')[-1]
-            distributed_loads.append({
-                'magnitude': float(value),
-                'length': float(request.form[f'distributed_load_length_{index}']),
-                'position': float(request.form[f'distributed_load_position_{index}'])
-            })
+    if request.method == "GET":
+        ex = EXAMPLES.get(request.args.get("example", "simple"), EXAMPLES["simple"])
+        return render_template("index.html", form=ex, **ctx)
 
-    L = float(request.form['length'])
+    form = _form_to_mapping()
+    try:
+        result = solve(beam_from_mapping(form))
+    except BeamError as exc:
+        return render_template("index.html", form=form, error=str(exc), **ctx), 400
 
-    R1_point, R2_point = calculate_reactions_point_loads(point_loads, L)
-    R1_distributed, R2_distributed = calculate_reactions_distributed_loads(distributed_loads, L)
+    return render_template(
+        "index.html", form=form, result=result.to_dict(), plot=render_base64(result, fu, lu), **ctx
+    )
 
-    R1 = R1_point + R1_distributed
-    R2 = R2_point + R2_distributed
 
-    plot_data = create_plots(R1, R2, None, None, None, None, L, point_loads, distributed_loads)
+@app.post("/api/solve")
+def api_solve():
+    """JSON API. Example body:
+    {"kind": "simply_supported", "length": 6, "point_loads": [[10, 2]], "udls": [[2, 0, 6]]}
+    """
+    try:
+        result = solve(beam_from_mapping(request.get_json(force=True) or {}))
+    except BeamError as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(result.to_dict())
 
-    return render_template('result.html', R1=R1, R2=R2, plot_data=plot_data)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    app.run(debug=os.environ.get("FLASK_DEBUG") == "1")
