@@ -412,10 +412,10 @@ def _segments(beam: Beam, rx: _Reactions) -> list[Segment]:
         cm = np.polyfit(xs, M, 3)
         scale = max(1.0, float(np.max(np.abs(M))), float(np.max(np.abs(V))))
 
-        def clean(c):
-            return [0.0 if abs(v) < 1e-9 * scale else float(v) for v in c]
-
-        segs.append(Segment(float(a), float(b), clean(cv), clean(cm)))
+        tol = 1e-9 * scale
+        segs.append(Segment(float(a), float(b),
+                            [0.0 if abs(v) < tol else float(v) for v in cv],
+                            [0.0 if abs(v) < tol else float(v) for v in cm]))
     return segs
 
 

@@ -1,0 +1,9 @@
+# One-click deploy on Render (https://render.com/deploy)
+services:
+  - type: web
+    name: sfd-bmd-calculator
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn "app:create_app()" --bind 0.0.0.0:$PORT --workers 2
+    healthCheckPath: /api/health
