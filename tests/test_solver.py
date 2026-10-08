@@ -124,3 +124,98 @@ def test_cli(capsys, tmp_path):
     text = capsys.readouterr().out
     assert "6.667" in text and out.stat().st_size > 1000
     assert main(["--length", "5", "--point", "1@9"]) == 2
+
+
+# ----------------------------------------------------------------- v3: varying loads
+def test_triangular_load_simply_supported():
+    # 0 → w over L: R_A = wL/6, R_B = wL/3, Mmax = wL²/(9√3) at x = L/√3
+    from beam_solver import DistributedLoad
+
+    w, L = 6.0, 9.0
+    r = solve(Beam(L, udls=[DistributedLoad(0, w, 0, L)]))
+    assert approx(r.reactions["R_A"], w * L / 6) and approx(r.reactions["R_B"], w * L / 3)
+    v, x = r.max_moment
+    assert approx(v, w * L**2 / (9 * math.sqrt(3))) and approx(x, L / math.sqrt(3), 2e-3)
+
+
+def test_triangular_load_cantilever():
+    from beam_solver import DistributedLoad
+
+    r = solve(Beam(3, kind="cantilever", udls=[DistributedLoad(4, 0, 0, 3)]))
+    assert approx(r.reactions["R_A"], 6)
+    assert approx(r.support_moments["M_A"], -4 * 9 / 6)
+
+
+# ----------------------------------------------------------------- v3: deflection
+def test_deflection_simply_supported_udl():
+    w, L, EI = 10.0, 6.0, 2.0e4
+    r = solve(Beam(L, udls=[UDL(w, 0, L)], EI=EI))
+    d, x = r.max_deflection
+    assert approx(d, -5 * w * L**4 / (384 * EI)) and approx(x, L / 2)
+    assert abs(float(r.deflection[0])) < 1e-9 and abs(float(r.deflection[-1])) < 1e-9
+
+
+def test_deflection_central_point_load():
+    P, L, EI = 12.0, 4.0, 5000.0
+    r = solve(Beam(L, point_loads=[PointLoad(P, L / 2)], EI=EI))
+    assert approx(r.max_deflection[0], -P * L**3 / (48 * EI))
+
+
+def test_cantilever_tip_deflection_and_slope():
+    P, L, EI = 3.0, 2.5, 800.0
+    r = solve(Beam(L, kind="cantilever", point_loads=[PointLoad(P, L)], EI=EI))
+    assert approx(float(r.deflection[-1]), -P * L**3 / (3 * EI))
+    assert approx(float(r.slope[-1]), -P * L**2 / (2 * EI))
+
+
+def test_no_deflection_without_ei():
+    r = solve(Beam(4, point_loads=[PointLoad(1, 2)]))
+    assert r.deflection is None and r.to_dict()["max_deflection"] is None
+
+
+# ----------------------------------------------------------------- v3: indeterminate
+def test_propped_cantilever_udl():
+    w, L = 4.0, 8.0
+    r = solve(Beam(L, kind="propped_cantilever", udls=[UDL(w, 0, L)]))
+    assert approx(r.reactions["R_B"], 3 * w * L / 8)
+    assert approx(r.reactions["R_A"], 5 * w * L / 8)
+    assert approx(r.support_moments["M_A"], -w * L**2 / 8)
+
+
+def test_propped_cantilever_central_point_load():
+    P, L = 16.0, 6.0
+    r = solve(Beam(L, kind="propped_cantilever", point_loads=[PointLoad(P, L / 2)]))
+    assert approx(r.reactions["R_B"], 5 * P / 16)
+    assert approx(r.support_moments["M_A"], -3 * P * L / 16)
+
+
+def test_fixed_fixed_udl():
+    w, L, EI = 3.0, 10.0, 1.0e4
+    r = solve(Beam(L, kind="fixed_fixed", udls=[UDL(w, 0, L)], EI=EI))
+    assert approx(r.reactions["R_A"], w * L / 2) and approx(r.reactions["R_B"], w * L / 2)
+    assert approx(r.support_moments["M_A"], -w * L**2 / 12)
+    assert approx(r.support_moments["M_B"], -w * L**2 / 12)
+    assert approx(m_at(r, L / 2), w * L**2 / 24)
+    assert approx(r.max_deflection[0], -w * L**4 / (384 * EI))
+    assert abs(float(r.slope[-1])) < 1e-6 and abs(float(r.deflection[-1])) < 1e-6
+
+
+def test_fixed_fixed_eccentric_point_load():
+    # M_A = -Pab²/L², M_B = -Pa²b/L²
+    P, a, b = 10.0, 2.0, 4.0
+    L = a + b
+    r = solve(Beam(L, kind="fixed_fixed", point_loads=[PointLoad(P, a)]))
+    assert approx(r.support_moments["M_A"], -P * a * b**2 / L**2)
+    assert approx(r.support_moments["M_B"], -P * a**2 * b / L**2)
+
+
+# ----------------------------------------------------------------- v3: equations
+def test_segment_equations_reproduce_diagram():
+    import numpy as np
+
+    r = solve(Beam(6, point_loads=[PointLoad(10, 2)], udls=[UDL(2, 3, 6)]))
+    assert [(s.start, s.end) for s in r.segments] == [(0, 2), (2, 3), (3, 6)]
+    for s in r.segments:
+        xm = (s.start + s.end) / 2
+        assert approx(float(np.polyval(s.moment, xm)), m_at(r, xm))
+    assert any("ΣM about A" in line for line in r.working)
