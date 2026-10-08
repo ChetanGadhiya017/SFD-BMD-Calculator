@@ -114,3 +114,13 @@ def test_jump_from_applied_moment_is_not_contraflexure():
                    point_loads=[PointLoad(10, 2), PointLoad(3, 6)], moments=[MomentLoad(5, 3.5)]))
     assert all(abs(x - 3.5) > 1e-3 for x in r.contraflexure_points)
     assert len(r.contraflexure_points) == 2
+
+
+def test_cli(capsys, tmp_path):
+    from beam_solver.__main__ import main
+
+    out = tmp_path / "b.png"
+    assert main(["--length", "6", "--point", "10@2", "--plot", str(out)]) == 0
+    text = capsys.readouterr().out
+    assert "6.667" in text and out.stat().st_size > 1000
+    assert main(["--length", "5", "--point", "1@9"]) == 2
