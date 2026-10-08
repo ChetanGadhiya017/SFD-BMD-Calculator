@@ -2,18 +2,20 @@
 
 # 📐 SFD & BMD Calculator
 
-**Shear Force and Bending Moment Diagrams for beams — in the browser, from the command line, or as a JSON API.**
+**Beam analysis that updates as you type: reactions, shear force, bending moment, slope and deflection.**
 
-Enter a beam and its loads; get support reactions, peak shear and moment with their locations, points of contraflexure, and clean diagrams.
+Simply supported, overhanging, cantilever, **propped cantilever** and **fixed-fixed** beams · point, uniform, triangular/trapezoidal and moment loads · interactive charts · step-by-step working · PDF report.
 
 [![CI](https://github.com/ChetanGadhiya017/SFD-BMD-Calculator/actions/workflows/ci.yml/badge.svg)](https://github.com/ChetanGadhiya017/SFD-BMD-Calculator/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-3-000000?logo=flask&logoColor=white)
 ![NumPy](https://img.shields.io/badge/NumPy-013243?logo=numpy&logoColor=white)
-![Matplotlib](https://img.shields.io/badge/Matplotlib-11557c)
+![Plotly](https://img.shields.io/badge/Plotly.js-3F4F75?logo=plotly&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-46%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
-<img src="docs/screenshot.png" alt="SFD & BMD Calculator web interface" width="90%" />
+<img src="docs/screenshot.png" alt="SFD & BMD Calculator" width="92%" />
 
 </div>
 
@@ -21,121 +23,135 @@ Enter a beam and its loads; get support reactions, peak shear and moment with th
 
 ## ✨ Features
 
+### Analysis
 | | |
 |---|---|
-| 🏗️ **Beam types** | Simply supported · overhanging (supports anywhere on the span) · cantilever |
-| ⬇️ **Loads** | Any number of point loads, partial UDLs and applied (clockwise/anticlockwise) moments |
-| 📊 **Results** | Reactions (and fixed-end moment), max \|V\|, max sagging & hogging moment with positions, points of contraflexure |
-| 🖼️ **Diagrams** | Loaded-beam sketch + SFD + BMD in one figure, peaks annotated, jumps drawn exactly |
-| 🌐 **Three interfaces** | Web app, CLI (`python -m beam_solver`), and `POST /api/solve` JSON endpoint |
-| ✅ **Verified** | 21 automated tests against textbook results (PL/4, Pab/L, wL²/8, cantilever PL, overhang hogging…) |
+| 🏗️ **5 support types** | Simply supported · overhanging (supports anywhere) · cantilever · propped cantilever · fixed at both ends |
+| ⬇️ **Loads** | Any number of point loads, **linearly varying** distributed loads (UDL, triangular, trapezoidal, partial) and applied couples |
+| 🧮 **Indeterminate beams** | Solved by the method of consistent deformations. You get the reactions and fixed-end moments without needing EI |
+| 📉 **Deflection** | Enter EI (or compute it from E × I) to get slope, deflected shape, max deflection and the span/deflection ratio |
+| 📊 **Results** | Reactions, support moments, max \|V\|, max sagging & hogging moment with positions, points of contraflexure |
+| 📝 **Learn the method** | *Working* tab shows the equilibrium / compatibility steps; *Equations* tab gives V(x) and M(x) for every segment |
+
+### Experience
+- ⚡ **Live**: recalculates as you type, with an SVG beam preview showing supports, loads, reactions and dimensions
+- 📈 **Interactive charts**: SFD, BMD and deflection with synced hover cursor, peak labels and contraflexure markers
+- 🔗 **Share**: the whole beam is stored in the URL. Copy the link and anyone opens the same problem
+- 📤 **Export**: PDF report, CSV data (x, V, M, θ, y), JSON definition, PNG charts
+- 🌙 **Dark mode** (follows your system), works on phones, remembers your last beam
+
+<p align="center"><img src="docs/screenshot-dark.png" alt="Dark mode with a fixed-fixed beam" width="80%" /></p>
 
 ---
 
-## 🚀 Quick start
+## 🚀 Run it
 
 ```bash
 git clone https://github.com/ChetanGadhiya017/SFD-BMD-Calculator.git
 cd SFD-BMD-Calculator
 pip install -r requirements.txt
-
-python app.py            # open http://127.0.0.1:5000
+python app.py                         # → http://127.0.0.1:5000
 ```
 
-Click one of the **Try:** examples, or enter your own beam and press **Calculate**.
-
-### Command line
+**Docker**
 
 ```bash
-# 6 m simply supported beam, 10 kN at 2 m
-python -m beam_solver --length 6 --point 10@2
+docker build -t sfd-bmd .
+docker run -p 8000:8000 sfd-bmd       # → http://localhost:8000
+```
 
-# Overhanging beam with UDL, two point loads and a couple; save the diagrams
-python -m beam_solver -L 6 --supports 0 4.5 --udl 2@0-6 --point 10@2 --point 3@6 --moment 5@3.5 --plot beam.png
+**Deploy:** `render.yaml` is included for one-click deployment on [Render](https://render.com). Any host that runs `gunicorn "app:create_app()"` works.
 
-# Cantilever
-python -m beam_solver -L 3 --cantilever --point 4@3 --udl 2@0-3
+---
+
+## 💻 Command line
+
+```bash
+python -m beam_solver -L 6 --point 10@2
+python -m beam_solver -L 6 --supports 0 4.5 --udl 2@0-6 --point 10@2 --moment 5@3.5 --plot beam.png
+python -m beam_solver -L 8 --support fixed_fixed --vload 2,6@0-5 --point 10@6 --EI 20000 --equations
 ```
 
 ```
 Reactions
-  R_A  =      6.667 kN
-  R_B  =      3.333 kN
+  R_A  =     14.971 kN
+  R_B  =     15.029 kN
+  M_A  =    -22.695 kN·m
+  M_B  =    -24.596 kN·m
 Extremes
-  |V|max   =      6.667 kN      at x = 0.000 m
-  M sag    =     13.333 kN·m   at x = 2.000 m
+  M sag    =     12.685 kN·m   at x = 4.108 m
+  Contraflexure at x = 1.777, 6.363
+  y max    =  -0.002503 m       at x = 4.068 m
+Equations
+  0 < x < 5:  V = −0.4x^2 − 2x + 14.97   M = −0.1333x^3 − x^2 + 14.97x − 22.7
+  ...
 ```
 
-### JSON API
+---
+
+## 🔌 REST API
+
+| Method | Endpoint | Returns |
+|---|---|---|
+| `POST` | `/api/solve` | Reactions, extremes, working, segment equations and plot series |
+| `POST` | `/api/report.pdf` | A4 PDF report |
+| `POST` | `/api/export.csv` | x, V, M (and slope, deflection) table |
+| `GET` | `/api/presets` | Example beams |
+| `GET` | `/api/health` | Status + version |
 
 ```bash
-curl -X POST http://127.0.0.1:5000/api/solve \
-     -H "Content-Type: application/json" \
-     -d '{"kind":"simply_supported","length":4,"udls":[[5,0,4]]}'
+curl -X POST http://127.0.0.1:5000/api/solve -H "Content-Type: application/json" -d '{
+  "kind": "propped_cantilever", "length": 8, "EI": 25000,
+  "distributed": [{"w1": 4, "w2": 4, "a": 0, "b": 8}],
+  "point_loads": [{"P": 10, "x": 3}],
+  "moments": [],
+  "series": false
+}'
 ```
 
-```json
-{
-  "reactions": {"R_A": 10.0, "R_B": 10.0},
-  "max_sagging_moment": {"value": 10.0, "x": 2.0},
-  "contraflexure_points": [],
-  "...": "..."
-}
-```
-
-`point_loads` are `[P, x]`, `udls` are `[w, from, to]`, `moments` are `[M, x]`; add `"support_a"`/`"support_b"` for overhangs or `"kind": "cantilever"`.
+| Field | Meaning |
+|---|---|
+| `kind` | `simply_supported`, `cantilever`, `propped_cantilever`, `fixed_fixed` |
+| `length`, `support_a`, `support_b` | Span and support positions (supports default to the ends) |
+| `point_loads` | `[{"P": 10, "x": 2}]`, downward positive |
+| `distributed` | `[{"w1": 0, "w2": 6, "a": 0, "b": 4}]`, intensity at `a` → at `b` |
+| `moments` | `[{"M": 5, "x": 3}]`, clockwise positive |
+| `EI` | Optional flexural rigidity (force·length²) for slope & deflection |
+| `units` | `{"force": "kN", "length": "m"}` for report/CSV labels |
 
 ---
 
 ## 📏 Sign convention
 
-| Quantity | Positive direction |
-|---|---|
-| Point loads, UDL intensity | ↓ downward |
-| Applied moments | ↻ clockwise |
-| Reactions | ↑ upward |
-| Shear force V(x) | Net upward force **left** of the section |
-| Bending moment M(x) | Sagging (concave up) |
+Loads ↓ positive · applied moments ↻ positive · reactions ↑ positive · shear = net upward force **left** of the section · sagging moment positive · deflection ↑ positive.
 
 ---
 
 ## 🧠 How it works
 
-1. **Reactions from equilibrium.** For two supports at *a* and *b*:
-   ΣM about A = 0 → `R_B = [ΣP(x−a) + ΣW(x̄−a) + ΣM] / (b−a)`, then ΣF = 0 → `R_A = ΣP + ΣW − R_B`.
-   For a cantilever, `R_A = ΣP + ΣW` and the fixed-end moment closes the moment balance.
-2. **Section method on a dense grid.** V(x) and M(x) are summed from every force to the left of each section (singularity-function style). Each load position is sampled on both sides so jumps are exact and peaks are not missed.
-3. **Post-processing.** Extremes, and zero-crossings of M that are not caused by an applied couple (true contraflexure).
+1. **Determinate beams:** reactions from ΣFy = 0 and ΣM = 0 about a support.
+2. **Indeterminate beams:** the right-hand restraint is released to leave a cantilever. Its deflection (and slope) at the release point is computed for the loads and for unit redundants, then the compatibility equations are solved.
+3. **Internal forces:** V(x) and M(x) are summed from every action left of each section on a dense grid. Each load position is sampled on both sides, so jumps are exact.
+4. **Deflection:** θ = ∫M/EI dx and y = ∫θ dx, with constants from the support conditions.
+5. **Segment equations:** between consecutive key points V is a polynomial of degree ≤ 2 and M of degree ≤ 3, so they are recovered exactly.
+
+All of this is checked against textbook results in **46 automated tests**: Pab/L, wL²/8, 5wL⁴/384EI, PL³/3EI, 3wL/8, −wL²/12, −Pab²/L², wL²/(9√3) and more.
 
 ```
-beam_solver/
-├── solver.py      # Beam, loads, equilibrium, V(x) and M(x)
-├── plotting.py    # beam sketch + SFD + BMD (Matplotlib, headless)
-└── __main__.py    # CLI
-app.py             # Flask UI + /api/solve
-templates/, static/
-tests/             # solver, CLI and web tests
-```
-
----
-
-## 🧪 Tests
-
-```bash
-pip install pytest
-pytest -q
+beam_solver/   solver.py (maths) · plotting.py (figures + PDF) · __main__.py (CLI)
+app.py         Flask API + page
+templates/ static/   UI (vanilla JS + Plotly)
+tests/         solver, API and CLI tests
 ```
 
 ---
 
 ## 🗺 Roadmap
 
-- [ ] Shear and moment equations per segment (step-by-step working for students)
-- [ ] Triangular / trapezoidal distributed loads
-- [ ] Deflection curve (EI input)
-- [ ] Export results to PDF / CSV
-
----
+- [ ] Internal hinges and continuous beams (3+ supports)
+- [ ] Variable EI along the span
+- [ ] Influence lines and moving loads
+- [ ] Section design check (bending stress from section properties)
 
 ## 📄 License
 
