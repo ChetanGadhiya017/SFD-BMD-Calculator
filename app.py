@@ -64,7 +64,7 @@ def beam_from_mapping(data: dict) -> Beam:
 def _form_rows(prefix: str, fields: list[str]) -> list[list[str]]:
     cols = [request.form.getlist(f"{prefix}_{f}") for f in fields]
     rows = []
-    for values in zip(*cols):
+    for values in zip(*cols, strict=False):
         if all(v.strip() == "" for v in values):
             continue  # ignore completely empty rows
         rows.append(list(values))
